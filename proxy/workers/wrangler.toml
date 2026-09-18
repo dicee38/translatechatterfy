@@ -9,13 +9,10 @@ compatibility_date = "2024-11-01"
 MOCK_MODE = "true"
 DAILY_BUDGET_USD = "5"
 
-# TODO(вечер, перед первым `wrangler deploy`):
-#   wrangler kv namespace create BUDGET_KV
-# и подставить сюда id/preview_id из вывода команды.
 [[kv_namespaces]]
 binding = "BUDGET_KV"
-id = "TODO-заменить-после-wrangler-kv-namespace-create"
-preview_id = "TODO-заменить-после-wrangler-kv-namespace-create"
+id = "53662b9dec134949974a9d8b39a85ad6"
+preview_id = "53662b9dec134949974a9d8b39a85ad6"
 
 # EXTENSION_TOKEN и OPENAI_API_KEY — секреты, НЕ сюда:
 #   wrangler secret put EXTENSION_TOKEN

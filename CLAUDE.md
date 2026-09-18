@@ -72,9 +72,16 @@ content script (v2.chatterfy.ai) → свой бэкенд-прокси → Open
         `wrangler dev` на настоящем Workers-рантайме (Miniflare) —
         `/health`, `/translate`, `/transcribe`, авторизация и рост
         бюджетного счётчика отработали.
-      - Ни то, ни другое реально не задеплоено (нет аккаунта
-        Cloudflare/VPS, подключённого в этой сессии) — команды для
-        деплоя описаны в `docs/TZ.md` п.3.5.
+      - **`proxy/workers/` задеплоен и живой:**
+        `https://chatterfy-translator-proxy.demonivan09.workers.dev`
+        (MOCK_MODE=true, секреты EXTENSION_TOKEN/OPENAI_API_KEY уже
+        заданы через `wrangler secret put`, KV namespace
+        `BUDGET_KV` создан и подставлен в `wrangler.toml`, реальный
+        `workers.dev`-поддомен `demonivan09` зарегистрирован).
+        `GET /health` и авторизованный `/translate` проверены прямо на
+        проде — отвечают. Домен добавлен в `host_permissions`
+        расширения (`extension/manifest.json`). VPS-вариант (`proxy/`)
+        не деплоился — не нужно, раз Workers-вариант уже поднят.
 - [x] **Этап 3 (без реального /translate).** Feature 1 целиком —
       content script (`extension/`): выделение текста, плашка с 4
       UI-состояниями, контекст диалекта через `messages/v1/search`,
