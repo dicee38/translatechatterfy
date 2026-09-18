@@ -12,6 +12,10 @@
   "background": {
     "service_worker": "background.js"
   },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Chatterfy AI Translator"
+  },
   "content_scripts": [
     {
       "matches": ["https://v2.chatterfy.ai/*"],

@@ -19,6 +19,28 @@
   // хеширования тут не нужна.
   const translationCache = new Map();
 
+  // Настройки из попапа (TZ п.5, этап 5). Дефолты — feature1Enabled: true,
+  // пустой override, чтобы до первого чтения storage поведение не менялось.
+  const settings = { feature1Enabled: true, manualDialectOverride: '' };
+
+  function applyStoredSettings(stored) {
+    if (stored.feature1Enabled !== undefined) settings.feature1Enabled = stored.feature1Enabled !== false;
+    if (stored.manualDialectOverride !== undefined) settings.manualDialectOverride = stored.manualDialectOverride || '';
+  }
+
+  chrome.storage.local.get(['feature1Enabled', 'manualDialectOverride'], applyStoredSettings);
+
+  // Живое обновление без перезагрузки страницы, если оператор переключил
+  // что-то в попапе, пока вкладка с Chatterfy уже открыта.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    const patch = {};
+    if (changes.feature1Enabled) patch.feature1Enabled = changes.feature1Enabled.newValue;
+    if (changes.manualDialectOverride) patch.manualDialectOverride = changes.manualDialectOverride.newValue;
+    applyStoredSettings(patch);
+    if (patch.feature1Enabled === false) window.CftTranslateBubble.hide();
+  });
+
   function getChatContainer() {
     return document.querySelector(CONFIG.chatContainerSelector);
   }
@@ -55,10 +77,10 @@
       .map((m) => m.content);
   }
 
-  function sendTranslateRequest(text, dialectContext) {
+  function sendTranslateRequest(text, dialectContext, targetLang) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: 'translate', payload: { text, dialectContext } },
+        { type: 'translate', payload: { text, dialectContext, targetLang } },
         (response) => resolve(response || { ok: false, kind: 'network_error' })
       );
     });
@@ -78,7 +100,10 @@
       }
     }
 
-    const response = await sendTranslateRequest(text, dialectContext);
+    // Ручной override диалекта из попапа (TZ п.5 — "на случай, если
+    // авто-контекст ошибся"), непустая строка перекрывает автоопределение.
+    const targetLang = settings.manualDialectOverride || undefined;
+    const response = await sendTranslateRequest(text, dialectContext, targetLang);
 
     if (response.ok) {
       translationCache.set(cacheKey, response.translation);
@@ -106,6 +131,8 @@
   }
 
   document.addEventListener('mouseup', (e) => {
+    if (!settings.feature1Enabled) return;
+
     const container = getChatContainer();
     if (!container || !container.contains(e.target)) {
       return;

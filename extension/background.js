@@ -1,21 +1,20 @@
-// Service worker: единственное место в расширении, которое знает адрес
-// прокси и токен авторизации. Content script никогда не ходит в прокси
-// напрямую — шлёт сообщение сюда, это исключает зависимость от CSP/CORS
-// конкретной страницы Chatterfy и держит конфиг прокси в одном месте
-// (проще будет добавить UI настроек на этапе 5).
+// Service worker: единственное место в расширении, которое реально ходит
+// в прокси. Content script никогда не ходит туда напрямую — шлёт
+// сообщение сюда, это исключает зависимость от CSP/CORS конкретной
+// страницы Chatterfy и держит сетевой код прокси в одном месте.
+// Адрес прокси и токен настраиваются через попап (этап 5, popup.js),
+// хранятся в chrome.storage.local; дефолты на случай, если оператор ещё
+// ничего не сохранял, — см. shared-defaults.js.
+importScripts('shared-defaults.js');
 
-// TODO(этап 5): вынести proxyBaseUrl/extensionToken в попап настроек
-// (chrome.storage.local), сейчас дефолты — для локальной разработки.
-// TODO(вечер): DEFAULT_EXTENSION_TOKEN должен совпадать с EXTENSION_TOKEN
-// из proxy/.env на реальном/локальном прокси.
-const DEFAULT_PROXY_BASE_URL = 'http://localhost:8787';
-const DEFAULT_EXTENSION_TOKEN = 'dev-local-token';
-
+// TODO(вечер): CFT_DEFAULT_EXTENSION_TOKEN в shared-defaults.js должен
+// совпадать с EXTENSION_TOKEN из proxy/.env на реальном/локальном прокси
+// (или просто сохраните свой токен через попап — он переживёт дефолт).
 async function getProxyConfig() {
   const stored = await chrome.storage.local.get(['proxyBaseUrl', 'extensionToken']);
   return {
-    proxyBaseUrl: stored.proxyBaseUrl || DEFAULT_PROXY_BASE_URL,
-    extensionToken: stored.extensionToken || DEFAULT_EXTENSION_TOKEN,
+    proxyBaseUrl: stored.proxyBaseUrl || CFT_DEFAULT_PROXY_BASE_URL,
+    extensionToken: stored.extensionToken || CFT_DEFAULT_EXTENSION_TOKEN,
   };
 }
 
