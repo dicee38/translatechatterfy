@@ -1,0 +1,6 @@
+# Скопируй в .dev.vars (для `wrangler dev`). В .gitignore, не коммитить.
+# MOCK_MODE и DAILY_BUDGET_USD уже заданы в wrangler.toml [vars] —
+# сюда добавляй, только если хочешь их локально переопределить.
+
+EXTENSION_TOKEN=dev-local-token
+OPENAI_API_KEY=

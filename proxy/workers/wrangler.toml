@@ -1,0 +1,23 @@
+name = "chatterfy-translator-proxy"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# Нечувствительные значения — можно коммитить (TZ п.3.4: это не контент).
+# MOCK_MODE=true по умолчанию — даже свежий деплой без явного шага
+# "выключить мок" ничего реального не потратит.
+[vars]
+MOCK_MODE = "true"
+DAILY_BUDGET_USD = "5"
+
+# TODO(вечер, перед первым `wrangler deploy`):
+#   wrangler kv namespace create BUDGET_KV
+# и подставить сюда id/preview_id из вывода команды.
+[[kv_namespaces]]
+binding = "BUDGET_KV"
+id = "TODO-заменить-после-wrangler-kv-namespace-create"
+preview_id = "TODO-заменить-после-wrangler-kv-namespace-create"
+
+# EXTENSION_TOKEN и OPENAI_API_KEY — секреты, НЕ сюда:
+#   wrangler secret put EXTENSION_TOKEN
+#   wrangler secret put OPENAI_API_KEY
+# Локально при `wrangler dev` их значения берутся из .dev.vars (см. .dev.vars.example).
