@@ -1,0 +1,46 @@
+const express = require('express');
+const multer = require('multer');
+const { enforceBudget } = require('../middleware/budget');
+const { estimateTranscribeCostUsdFromFileSize } = require('../lib/pricing');
+const { recordCost } = require('../lib/budget-store');
+const openai = require('../lib/openai');
+
+const router = express.Router();
+
+// В памяти, не на диск: TZ п.3.4 — не хранить аудио дольше, чем нужно
+// для получения расшифровки. Ограничение размера — грубая защита от
+// случайного/злонамеренного огромного файла в мок-режиме без ключей.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+});
+
+// TZ п.3.1: POST /transcribe multipart/form-data, поле file -> { transcript, language? }
+router.post(
+  '/transcribe',
+  upload.single('file'),
+  (req, res, next) => {
+    if (!req.file) {
+      return res.status(400).json({ error: 'bad_request', message: 'Поле file (multipart) обязательно.' });
+    }
+    next();
+  },
+  enforceBudget((req) => estimateTranscribeCostUsdFromFileSize(req.file.size)),
+  async (req, res, next) => {
+    try {
+      const result = await openai.transcribe({
+        fileBuffer: req.file.buffer,
+        fileName: req.file.originalname,
+        mimeType: req.file.mimetype,
+      });
+
+      recordCost(result.costUsd);
+
+      res.json({ transcript: result.transcript, language: result.language });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+module.exports = router;
