@@ -1,11 +1,12 @@
 // Приблизительные цены для оценки стоимости запроса (бюджетный счётчик,
 // TZ п.3.3). Это ПЛЕЙСХОЛДЕРЫ — проверить точные актуальные цены в
-// прайсинге OpenAI/Anthropic перед реальными вызовами вечером и поправить
-// здесь при расхождении. Точный дневной лимит и так предварительный
-// (TZ п.10), поэтому грубая оценка на старте — ожидаемо, не блокер.
+// прайсинге OpenAI перед реальными вызовами вечером (и актуальное имя
+// дешёвой чат-модели — см. TODO в lib/openai.js) и поправить здесь при
+// расхождении. Точный дневной лимит и так предварительный (TZ п.10),
+// поэтому грубая оценка на старте — ожидаемо, не блокер.
 
-const CLAUDE_HAIKU_PRICE_PER_1M_INPUT_TOKENS_USD = 1.0;
-const CLAUDE_HAIKU_PRICE_PER_1M_OUTPUT_TOKENS_USD = 5.0;
+const OPENAI_CHAT_PRICE_PER_1M_INPUT_TOKENS_USD = 0.4;
+const OPENAI_CHAT_PRICE_PER_1M_OUTPUT_TOKENS_USD = 1.6;
 
 const TRANSCRIBE_PRICE_PER_MINUTE_USD = 0.006;
 
@@ -23,8 +24,8 @@ function estimateTranslateCostUsd({ text, dialectContext }) {
   const inputTokens = estimateTokensFromText(text) + estimateTokensFromText(contextText) + 200; // +200 на системный промпт
   const outputTokens = estimateTokensFromText(text) + 50; // перевод обычно похожей длины
 
-  const inputCost = (inputTokens / 1_000_000) * CLAUDE_HAIKU_PRICE_PER_1M_INPUT_TOKENS_USD;
-  const outputCost = (outputTokens / 1_000_000) * CLAUDE_HAIKU_PRICE_PER_1M_OUTPUT_TOKENS_USD;
+  const inputCost = (inputTokens / 1_000_000) * OPENAI_CHAT_PRICE_PER_1M_INPUT_TOKENS_USD;
+  const outputCost = (outputTokens / 1_000_000) * OPENAI_CHAT_PRICE_PER_1M_OUTPUT_TOKENS_USD;
   return inputCost + outputCost;
 }
 

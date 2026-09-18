@@ -2,7 +2,7 @@ const express = require('express');
 const { enforceBudget } = require('../middleware/budget');
 const { estimateTranslateCostUsd } = require('../lib/pricing');
 const { recordCost } = require('../lib/budget-store');
-const claude = require('../lib/claude');
+const openai = require('../lib/openai');
 
 const router = express.Router();
 
@@ -21,7 +21,7 @@ router.post(
         return res.status(400).json({ error: 'bad_request', message: 'Поле dialectContext должно быть массивом строк.' });
       }
 
-      const result = await claude.translate({ text, dialectContext: dialectContext || [], targetLang });
+      const result = await openai.translate({ text, dialectContext: dialectContext || [], targetLang });
 
       // TZ п.3.4: в лог/хранилище уходит только стоимость, не текст.
       recordCost(result.costUsd);

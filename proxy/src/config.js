@@ -13,8 +13,9 @@ const config = {
   port: numberFromEnv(process.env.PORT, 8787),
   mockMode: MOCK_MODE,
   extensionToken: process.env.EXTENSION_TOKEN || '',
+  // Один вендор на всё: транскрипция (TZ п.5.2) и перевод/умный ответ
+  // (TZ п.4.2, 6.2) теперь оба на OpenAI — один ключ, не два.
   openaiApiKey: process.env.OPENAI_API_KEY || '',
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
   dailyBudgetUsd: numberFromEnv(process.env.DAILY_BUDGET_USD, 5),
 };
 
@@ -31,9 +32,6 @@ function assertStartupInvariants() {
   if (!config.mockMode) {
     if (!config.openaiApiKey) {
       problems.push('MOCK_MODE=false, но OPENAI_API_KEY пуст.');
-    }
-    if (!config.anthropicApiKey) {
-      problems.push('MOCK_MODE=false, но ANTHROPIC_API_KEY пуст.');
     }
   }
 
