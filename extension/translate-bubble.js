@@ -118,16 +118,16 @@
     });
 
     // По запросу оператора — кроме копирования, вставка прямо в поле
-    // ввода (в конец текущего содержимого, ничего не стирая), тот же
-    // приём execCommand('insertText', ...) из TZ п.6.2, что и у кнопки в
-    // самом композере (extension/compose-translate.js) — общая функция в
-    // chatterfy-api.js, чтобы не дублировать.
+    // ввода, заменяя текущее содержимое целиком (не дописывая в конец),
+    // тот же приём execCommand('insertText', ...) из TZ п.6.2, что и у
+    // кнопки в самом композере (extension/compose-translate.js) — общая
+    // функция в chatterfy-api.js, чтобы не дублировать.
     const insertBtn = document.createElement('button');
     insertBtn.className = 'cft-bubble__btn';
     insertBtn.type = 'button';
     insertBtn.textContent = 'Вставить';
     insertBtn.addEventListener('click', () => {
-      const inserted = window.CftChatterfyApi.insertIntoCompose(translation, { replaceAll: false });
+      const inserted = window.CftChatterfyApi.insertIntoCompose(translation, { replaceAll: true });
       insertBtn.textContent = inserted ? 'Вставлено' : 'Поле ввода не найдено';
       setTimeout(() => {
         if (insertBtn.isConnected) insertBtn.textContent = 'Вставить';
