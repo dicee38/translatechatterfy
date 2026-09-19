@@ -260,23 +260,72 @@
   }
 
   // --- Поиск голосовых сообщений в DOM ---
+  //
+  // Живьём выяснилось: у Chatterfy нет нативного <audio> — кастомный
+  // React-плеер (waveform + кнопка play), прямой ссылки на файл или id
+  // сообщения в DOM-разметке виджета нет вообще. Сопоставляем по паре
+  // сигналов, которые ЕСТЬ и в DOM, и в ответе API:
+  //   - текст вида "00:00/00:27" — общая длительность (после "/"),
+  //     совпадает с files[].meta.duration;
+  //   - span[data-message-timestamp="true"] с временем "ЧЧ:ММ" рядом —
+  //     совпадает с created_at, отформатированным в ЧАСОВОМ ПОЯСЕ БРАУЗЕРА
+  //     (тот же браузер рендерит и то, и то — таймзону угадывать не нужно,
+  //     Date() в content script и в коде страницы даёт один результат).
+  // Не идеально (два входящих голосовых в одну минуту одной длины дадут
+  // коллизию), но рабочий вариант без завязки на CSS-классы конкретной
+  // сборки. Сообщения без meta.duration пропускаются — сопоставлять
+  // только по времени слишком ненадёжно.
 
   const attachedUrls = new Set();
+  const DURATION_TEXT_PATTERN = /^\d{1,2}:\d{2}\/(\d{1,2}:\d{2})$/;
 
-  function findAudioElementForUrl(url) {
-    const audios = document.querySelectorAll('audio');
-    for (const audio of audios) {
-      if (audio.currentSrc === url || audio.src === url) return audio;
-      const source = audio.querySelector('source[src]');
-      if (source && source.src === url) return audio;
+  function formatDurationMMSS(totalSeconds) {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.round(totalSeconds % 60);
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function formatTimeHHMM(iso) {
+    // getHours()/getMinutes() — локальное время браузера, не UTC. Если
+    // совпадений с виджетами не будет вообще (ни одного) — вероятно,
+    // Chatterfy рендерит время как-то иначе (например, через getUTCHours),
+    // тогда заменить на getUTCHours()/getUTCMinutes() здесь.
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  // Виджет голосового — самый маленький div, чей текст целиком выглядит
+  // как "00:00/00:27" (текущая позиция / общая длительность плеера).
+  function findVoiceWidgets() {
+    const widgets = [];
+    document.querySelectorAll('div').forEach((el) => {
+      if (el.children.length === 0 && DURATION_TEXT_PATTERN.test(el.textContent.trim())) {
+        widgets.push(el);
+      }
+    });
+    return widgets;
+  }
+
+  // От виджета длительности поднимаемся вверх до ближайшего предка,
+  // внутри которого есть таймстамп сообщения — это и есть контейнер всей
+  // "карточки" голосового, к которому цепляем кнопку/панель.
+  function findBubbleContainer(durationEl) {
+    let node = durationEl;
+    // 20 — с запасом: на реальной вёрстке общий предок оказался на 9-м
+    // шаге вверх, глубина вложенности Tailwind-разметки может отличаться
+    // на других сборках/типах сообщений.
+    for (let i = 0; i < 20 && node; i += 1) {
+      if (node.querySelector && node.querySelector('[data-message-timestamp]')) return node;
+      node = node.parentElement;
     }
     return null;
   }
 
-  function attachPanel(audioEl, voice) {
+  function attachPanel(bubbleEl, voice) {
     const panel = document.createElement('div');
     panel.className = 'cft-voice-panel';
-    audioEl.insertAdjacentElement('afterend', panel);
+    bubbleEl.appendChild(panel);
     resetToIdle(panel, voice);
   }
 
@@ -308,23 +357,51 @@
     // (уже на русском) — "перевести на русский" для них бессмысленно, тот
     // же класс проблемы, что был с Feature 1 до фикса направления. Пока
     // ограничиваемся входящими; при необходимости расширить — тривиально.
+    const candidates = [];
     for (const m of messages) {
       if (m.sender_type !== 'incoming') continue;
       for (const f of m.files || []) {
         if (f.type !== 'voice' || !f.url) continue;
         if (attachedUrls.has(f.url)) continue;
-
-        const audioEl = findAudioElementForUrl(f.url);
-        if (!audioEl) continue; // ещё не отрендерился в DOM или не найден — попробуем на следующем скане
-
-        attachedUrls.add(f.url);
-        attachPanel(audioEl, {
+        const duration = f.meta && typeof f.meta.duration === 'number' ? f.meta.duration : null;
+        const timeText = formatTimeHHMM(m.created_at);
+        // Без длительности сопоставление по одному времени слишком
+        // ненадёжно (коллизии) — такие голосовые пропускаем.
+        if (duration === null || !timeText) continue;
+        candidates.push({
           chatId,
           messageId: m.id,
           url: f.url,
-          costLabel: estimateCostLabel(f.meta && f.meta.duration),
+          costLabel: estimateCostLabel(duration),
+          durationText: formatDurationMMSS(duration),
+          timeText,
         });
       }
+    }
+
+    if (candidates.length === 0) return;
+
+    const widgets = findVoiceWidgets();
+    for (const widget of widgets) {
+      const match = DURATION_TEXT_PATTERN.exec(widget.textContent.trim());
+      if (!match) continue;
+      const widgetDurationText = match[1];
+
+      const bubble = findBubbleContainer(widget);
+      if (!bubble || bubble.dataset.cftVoiceAttached) continue;
+      const timestampEl = bubble.querySelector('[data-message-timestamp]');
+      const widgetTimeText = timestampEl ? timestampEl.textContent.trim() : null;
+      if (!widgetTimeText) continue;
+
+      const candidateIndex = candidates.findIndex(
+        (c) => c.durationText === widgetDurationText && c.timeText === widgetTimeText
+      );
+      if (candidateIndex === -1) continue;
+
+      const [voice] = candidates.splice(candidateIndex, 1);
+      attachedUrls.add(voice.url);
+      bubble.dataset.cftVoiceAttached = 'true';
+      attachPanel(bubble, voice);
     }
   }
 
