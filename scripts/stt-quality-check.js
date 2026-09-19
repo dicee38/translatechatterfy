@@ -9,11 +9,17 @@
 //   CHATTERFY_AUTH_TOKEN=<jwt из localStorage/sessionStorage страницы> \
 //   PROXY_BASE_URL=https://chatterfy-translator-proxy.demonivan09.workers.dev \
 //   EXTENSION_TOKEN=<токен из proxy/.env или wrangler secret> \
-//   node scripts/stt-quality-check.js --chats <chatId1>,<chatId2> [--limit 15] [--dry-run]
+//   node scripts/stt-quality-check.js --chats <chatId1>,<chatId2> [--limit 15] [--dry-run] [--all-senders]
 //
 // --dry-run — только найти и вывести список голосовых (URL, длительность),
 // ничего не транскрибировать и не тратить бюджет. Полезно сначала прикинуть,
 // сколько сэмплов реально наберётся, прежде чем жать "по-настоящему".
+//
+// По умолчанию берутся только ВХОДЯЩИЕ голосовые (от собеседника, на
+// диалекте) — именно их качество распознавания и нужно оценить на этапе 1.
+// В реальных чатах попадаются ещё исходящие шаблонные голосовые оператора
+// (заготовленная озвучка на русском) — они не про то, что мы проверяем,
+// --all-senders включает их обратно, если понадобится зачем-то ещё.
 //
 // Токен CHATTERFY_AUTH_TOKEN достать так: F12 на странице v2.chatterfy.ai →
 // Console → см. docs/chatterfy-api-reference.md §1 (поиск JWT-подобной
@@ -22,11 +28,16 @@
 const MESSAGES_SEARCH_URL = 'https://migration-api.chatterfy.ai/api/messages/v1/search';
 
 function parseArgs(argv) {
-  const args = { chats: [], limit: 15, dryRun: false };
+  const args = { chats: [], limit: 15, dryRun: false, allSenders: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--chats') args.chats = (argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
     else if (argv[i] === '--limit') args.limit = Number(argv[++i]) || args.limit;
     else if (argv[i] === '--dry-run') args.dryRun = true;
+    // По умолчанию — только входящие (от собеседника, на диалекте). Этап 1
+    // проверяет качество распознавания именно диалекта, а не заготовленных
+    // шаблонных голосовых оператора (они попадаются в реальных чатах и
+    // обычно на русском) — --all-senders включает их обратно, если нужно.
+    else if (argv[i] === '--all-senders') args.allSenders = true;
   }
   return args;
 }
@@ -109,8 +120,9 @@ async function main() {
   for (const chatId of args.chats) {
     try {
       const messages = await fetchChatMessages(chatId, authToken);
-      const voices = extractVoiceMessages(messages, chatId);
-      console.log(`  ${chatId}: найдено ${voices.length} голосовых`);
+      let voices = extractVoiceMessages(messages, chatId);
+      if (!args.allSenders) voices = voices.filter((v) => v.senderType === 'incoming');
+      console.log(`  ${chatId}: найдено ${voices.length} голосовых${args.allSenders ? '' : ' (только входящие)'}`);
       allVoices = allVoices.concat(voices);
     } catch (err) {
       console.error(`  ${chatId}: ошибка — ${err.message}`);
