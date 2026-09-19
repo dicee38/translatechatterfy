@@ -62,9 +62,14 @@
   }
 
   async function fetchChatMessages(chatId) {
+    // Подтверждено HAR-логом реального запроса от самого Chatterfy:
+    // эндпоинт открытый (CORS Access-Control-Allow-Origin: *), никакого
+    // заголовка авторизации/токена/cookie не шлётся вообще. credentials:
+    // 'include' был лишним и НЕ безобидным — с Origin: * браузер обязан
+    // блокировать credentialed-запрос (это и вызывало net::ERR_FAILED,
+    // из-за чего контекст диалекта всегда оставался пустым).
     const res = await fetch(MESSAGES_SEARCH_URL, {
       method: 'POST',
-      credentials: 'include', // сессия оператора в самом Chatterfy, не ключи моделей
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, limit: CONFIG.dialectContextLimit }),
     });
@@ -74,10 +79,12 @@
     }
 
     const data = await res.json();
-    // TODO: подтвердить точную форму верхнего уровня ответа на реальном
-    // трафике (TZ п.0.1 показывает схему одного сообщения, не обёртку
-    // списка) — на всякий случай понимаем и голый массив, и {messages:[]}/{items:[]}.
-    return Array.isArray(data) ? data : data.messages || data.items || [];
+    // Подтверждено тем же HAR-логом — реальная форма ответа вложенная:
+    // {"data":{"items":[...]}}, не голый массив и не {messages:[]}/{items:[]}
+    // на верхнем уровне, как предполагалось изначально (TZ п.0.1 показывал
+    // только схему одного сообщения, не обёртку списка). Остальные варианты
+    // оставлены как фолбэк на случай другого эндпоинта/версии API.
+    return data?.data?.items || data?.items || data?.messages || (Array.isArray(data) ? data : []);
   }
 
   function buildDialectContext(messages) {
