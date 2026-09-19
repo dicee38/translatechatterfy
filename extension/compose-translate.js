@@ -9,10 +9,6 @@
   const RESCAN_INTERVAL_MS = 1500;
   const DIALECT_CONTEXT_MESSAGES = 10;
 
-  // TZ п.6.2: подтверждено реальной вёрсткой композера — Quill,
-  // contenteditable-редактор с классом .ql-editor.
-  const EDITOR_SELECTOR = '.ql-editor[contenteditable="true"]';
-
   const settings = { feature1Enabled: true, manualDialectOverride: '' };
 
   function applyStoredSettings(stored) {
@@ -30,35 +26,8 @@
     applyStoredSettings(patch);
   });
 
-  function findComposeEditor() {
-    return document.querySelector(EDITOR_SELECTOR);
-  }
-
   function getEditorText(editor) {
     return (editor.innerText || editor.textContent || '').trim();
-  }
-
-  // TZ п.6.2: execCommand('insertText', ...) — Quill перехватывает это как
-  // обычный пользовательский ввод и сам обновляет внутреннюю модель (Delta),
-  // ничего досинхронизировать не нужно. Тут — замена, а не просто вставка:
-  // сначала выделяем всё содержимое редактора, потом "вставляем" перевод
-  // поверх выделения, той же командой (тот же приём, что и в TZ, просто с
-  // непустым выделением вместо вставки в курсор).
-  function replaceEditorText(editor, newText) {
-    editor.focus();
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    const selection = window.getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-
-    const ok = document.execCommand('insertText', false, newText);
-    if (!ok) {
-      // Фолбэк из TZ п.6.2 на случай, если execCommand не подхватится на
-      // этой конкретной сборке Quill.
-      editor.textContent = newText;
-      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: newText }));
-    }
   }
 
   function sendTranslateRequest(text, dialectContext, targetLang) {
@@ -94,7 +63,7 @@
     btn.classList.remove('cft-compose-btn--busy');
 
     if (response.ok) {
-      replaceEditorText(editor, response.translation);
+      window.CftChatterfyApi.insertIntoCompose(response.translation, { replaceAll: true });
       return;
     }
 
@@ -133,7 +102,7 @@
 
   function scan() {
     if (!settings.feature1Enabled) return;
-    const editor = findComposeEditor();
+    const editor = window.CftChatterfyApi.getComposeEditor();
     if (!editor) return;
     ensureButton(editor);
   }

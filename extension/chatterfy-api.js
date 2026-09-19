@@ -15,6 +15,10 @@
 
   const MESSAGES_SEARCH_URL = 'https://migration-api.chatterfy.ai/api/messages/v1/search';
 
+  // TZ п.6.2: подтверждено реальной вёрсткой композера — Quill,
+  // contenteditable-редактор с классом .ql-editor.
+  const COMPOSE_EDITOR_SELECTOR = '.ql-editor[contenteditable="true"]';
+
   // Подтверждено docs/chatterfy-api-reference.md §1: заголовок
   // `authorization: <JWT>` без префикса "Bearer", токен — в localStorage/
   // sessionStorage по виду (точное имя ключа не зафиксировано, оказалось
@@ -88,11 +92,48 @@
       .map((m) => m.content);
   }
 
+  function getComposeEditor() {
+    return document.querySelector(COMPOSE_EDITOR_SELECTOR);
+  }
+
+  // Общая вставка текста в поле ввода Quill — используется и кнопкой
+  // «Вставить» в плашке перевода (content.js/translate-bubble.js,
+  // добавляет в конец, не трогая уже набранное), и кнопкой в самом поле
+  // ввода (compose-translate.js, replaceAll: true — заменяет черновик).
+  // TZ п.6.2: execCommand('insertText', ...) — Quill перехватывает это как
+  // обычный пользовательский ввод и сам обновляет внутреннюю модель
+  // (Delta), досинхронизировать ничего не нужно.
+  function insertIntoCompose(text, options) {
+    const replaceAll = Boolean(options && options.replaceAll);
+    const editor = getComposeEditor();
+    if (!editor) return false;
+
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    if (!replaceAll) range.collapse(false); // в конец текущего содержимого, не заменяя его
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const ok = document.execCommand('insertText', false, text);
+    if (!ok) {
+      // Фолбэк из TZ п.6.2 на случай, если execCommand не подхватится на
+      // этой конкретной сборке Quill.
+      editor.textContent = replaceAll ? text : (editor.textContent || '') + text;
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+    }
+    return true;
+  }
+
   window.CftChatterfyApi = {
     getChatContainer,
     getChatId,
     getAuthToken,
     fetchChatMessages,
     buildDialectContext,
+    getComposeEditor,
+    insertIntoCompose,
   };
 })();
