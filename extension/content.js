@@ -79,25 +79,23 @@
       .map((m) => m.content);
   }
 
-  function normalizeForMatch(s) {
-    return (s || '').replace(/\s+/g, ' ').trim();
-  }
-
-  // Живьём выяснилось (проверка на реальном Chatterfy): выделение входящего
-  // сообщения собеседника и "перевод на диалект собеседника" даёт перевод
-  // "с арабского на арабский" — текст и так уже на этом диалекте. Промпт в
-  // TZ п.4.2 однонаправленный (для написания ответа), а нужно ещё и читать
-  // входящие. Определяем направление по sender_type найденного сообщения:
-  // не нашли/это исходящее — как раньше (в диалект), нашли входящее — на
-  // русский. Сопоставление по тексту, а не по DOM-узлу — данные всё ещё
-  // строго из API (TZ, "Архитектура").
-  function findSenderTypeForSelection(messages, selectedText) {
-    const needle = normalizeForMatch(selectedText);
-    if (!needle) return null;
-    const match = messages.find(
-      (m) => m && typeof m.content === 'string' && normalizeForMatch(m.content).includes(needle)
-    );
-    return match ? match.sender_type : null;
+  // Живьём выяснилось (проверка на реальном Chatterfy) — направление
+  // перевода нельзя определять по sender_type выделенного сообщения:
+  // "исходящее → в диалект" ломается, как только оператор отправляет
+  // ГОТОВЫЙ перевод на диалекте (обычный рабочий цикл — перевёл, вставил,
+  // отправил) — такое сообщение лежит в истории как "outcoming", но
+  // ФАКТИЧЕСКИ уже на диалекте, и повторный "перевод в диалект" — то же
+  // самое "с дариджи на дариджу", что и было с входящими до этой правки.
+  // Надёжнее смотреть не на то, КТО писал, а на то, НА КАКОМ АЛФАВИТЕ
+  // написан сам выделенный текст: TZ подразумевает, что оператор пишет
+  // по-русски (кириллица), а диалект собеседника — латиница/арабица/иное.
+  function detectDirection(selectedText) {
+    const cyrillic = (selectedText.match(/[Ѐ-ӿ]/g) || []).length;
+    const letters = (selectedText.match(/\p{L}/gu) || []).length;
+    if (letters === 0) return 'to_dialect';
+    // Заметная доля кириллицы — считаем текст русским (оператора) → в диалект.
+    // Иначе — латиница/арабица и т.п., уже похоже на диалект → на русский.
+    return cyrillic / letters > 0.3 ? 'to_dialect' : 'to_operator_language';
   }
 
   function sendTranslateRequest(text, dialectContext, targetLang, direction) {
@@ -112,19 +110,15 @@
   async function runTranslation(text, chatId, cacheKey) {
     window.CftTranslateBubble.showLoading();
 
+    const direction = detectDirection(text);
+
     let dialectContext = [];
-    let direction = 'to_dialect';
     if (chatId) {
       try {
-        const messages = await fetchChatMessages(chatId);
-        dialectContext = buildDialectContext(messages);
-        if (findSenderTypeForSelection(messages, text) === 'incoming') {
-          direction = 'to_operator_language';
-        }
+        dialectContext = buildDialectContext(await fetchChatMessages(chatId));
       } catch (err) {
         // Контекст диалекта — это улучшение качества перевода, а не
-        // обязательное условие; при сбое просто переводим без него
-        // (и без автоопределения направления — остаётся дефолт "в диалект").
+        // обязательное условие; при сбое просто переводим без него.
         console.warn('[Chatterfy Translator] не удалось получить контекст диалекта:', err);
       }
     }
