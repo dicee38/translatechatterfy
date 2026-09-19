@@ -3,10 +3,10 @@ main = "src/index.js"
 compatibility_date = "2024-11-01"
 
 # Нечувствительные значения — можно коммитить (TZ п.3.4: это не контент).
-# MOCK_MODE=true по умолчанию — даже свежий деплой без явного шага
-# "выключить мок" ничего реального не потратит.
+# MOCK_MODE=false — реальные вызовы к OpenAI включены (ключ уже задан
+# через `wrangler secret put OPENAI_API_KEY`, см. CLAUDE.md чек-лист).
 [vars]
-MOCK_MODE = "true"
+MOCK_MODE = "false"
 DAILY_BUDGET_USD = "5"
 
 [[kv_namespaces]]

@@ -1,5 +1,10 @@
 const { config } = require('../config');
-const { estimateTranscribeCostUsdFromFileSize, estimateTranslateCostUsd } = require('./pricing');
+const {
+  estimateTranscribeCostUsdFromFileSize,
+  estimateTranscribeCostUsdFromDuration,
+  estimateTranslateCostUsd,
+  computeChatCostUsdFromUsage,
+} = require('./pricing');
 
 async function transcribe({ fileBuffer, fileName, mimeType }) {
   const estimatedCostUsd = estimateTranscribeCostUsdFromFileSize(fileBuffer.length);
@@ -12,25 +17,28 @@ async function transcribe({ fileBuffer, fileName, mimeType }) {
     };
   }
 
-  // TODO(вечер): реальный вызов OpenAI transcription API. Подставить
-  // OPENAI_API_KEY (уже читается в config.openaiApiKey) и раскомментировать:
-  //
-  // const form = new FormData();
-  // form.append('file', new Blob([fileBuffer], { type: mimeType }), fileName);
-  // form.append('model', 'gpt-4o-transcribe'); // или актуальное имя STT-модели
-  //
-  // const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-  //   method: 'POST',
-  //   headers: { Authorization: `Bearer ${config.openaiApiKey}` },
-  //   body: form,
-  // });
-  // if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
-  // const data = await response.json();
-  // const actualCostUsd = estimateTranscribeCostUsdFromDuration(data.duration ?? 0);
-  //
-  // return { transcript: data.text, language: data.language, costUsd: actualCostUsd };
+  const form = new FormData();
+  form.append('file', new Blob([fileBuffer], { type: mimeType }), fileName);
+  form.append('model', 'gpt-transcribe'); // имя из TZ (уже согласовано, см. этап 1 чек-листа)
+  form.append('response_format', 'verbose_json'); // единственный формат, отдающий duration для точного списания
 
-  throw new Error('OpenAI API вызов не реализован: MOCK_MODE=false, но реального вызова ещё нет (ключей не было на момент разработки).');
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.openaiApiKey}` },
+    body: form,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`OpenAI API error: ${response.status} ${errText}`);
+  }
+
+  const data = await response.json();
+  const actualCostUsd = typeof data.duration === 'number'
+    ? estimateTranscribeCostUsdFromDuration(data.duration)
+    : estimatedCostUsd;
+
+  return { transcript: data.text ?? '', language: data.language, costUsd: actualCostUsd };
 }
 
 // TZ п.4.2 — модель дергается и для перевода (Feature 1), и в перспективе
@@ -64,30 +72,28 @@ async function translate({ text, dialectContext, targetLang }) {
 
   const prompt = buildTranslatePrompt({ text, dialectContext, targetLang });
 
-  // TODO(вечер): реальный вызов OpenAI chat completions. Подставить
-  // OPENAI_API_KEY (уже читается в config.openaiApiKey), проверить
-  // актуальное имя дешёвой чат-модели (ниже — плейсхолдер, см. также
-  // pricing.js) и раскомментировать/доделать:
-  //
-  // const response = await fetch('https://api.openai.com/v1/chat/completions', {
-  //   method: 'POST',
-  //   headers: {
-  //     Authorization: `Bearer ${config.openaiApiKey}`,
-  //     'Content-Type': 'application/json',
-  //   },
-  //   body: JSON.stringify({
-  //     model: 'gpt-4.1-mini', // TODO: сверить актуальное имя/цену перед реальным запуском
-  //     messages: [{ role: 'user', content: prompt }],
-  //   }),
-  // });
-  // if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
-  // const data = await response.json();
-  // const translation = data.choices?.[0]?.message?.content ?? '';
-  // const actualCostUsd = computeActualCostFromUsage(data.usage); // input/output tokens * pricing.js
-  //
-  // return { translation, costUsd: actualCostUsd };
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.openaiApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
 
-  throw new Error('OpenAI API вызов не реализован: MOCK_MODE=false, но реального вызова ещё нет (ключей не было на момент разработки).');
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`OpenAI API error: ${response.status} ${errText}`);
+  }
+
+  const data = await response.json();
+  const translation = (data.choices?.[0]?.message?.content ?? '').trim();
+  const actualCostUsd = computeChatCostUsdFromUsage(data.usage) || estimatedCostUsd;
+
+  return { translation, costUsd: actualCostUsd };
 }
 
 module.exports = { transcribe, translate, buildTranslatePrompt };

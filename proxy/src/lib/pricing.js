@@ -46,8 +46,20 @@ function estimateTranscribeCostUsdFromDuration(durationSeconds) {
   return (durationSeconds / 60) * TRANSCRIBE_PRICE_PER_MINUTE_USD;
 }
 
+// Фактическая стоимость по реальному usage из ответа OpenAI — точнее
+// оценки по длине строки, использовать когда она известна.
+function computeChatCostUsdFromUsage(usage) {
+  if (!usage) return 0;
+  const inputTokens = usage.prompt_tokens || 0;
+  const outputTokens = usage.completion_tokens || 0;
+  const inputCost = (inputTokens / 1_000_000) * OPENAI_CHAT_PRICE_PER_1M_INPUT_TOKENS_USD;
+  const outputCost = (outputTokens / 1_000_000) * OPENAI_CHAT_PRICE_PER_1M_OUTPUT_TOKENS_USD;
+  return inputCost + outputCost;
+}
+
 module.exports = {
   estimateTranslateCostUsd,
   estimateTranscribeCostUsdFromFileSize,
   estimateTranscribeCostUsdFromDuration,
+  computeChatCostUsdFromUsage,
 };

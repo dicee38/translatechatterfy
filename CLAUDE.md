@@ -72,16 +72,29 @@ content script (v2.chatterfy.ai) → свой бэкенд-прокси → Open
         `wrangler dev` на настоящем Workers-рантайме (Miniflare) —
         `/health`, `/translate`, `/transcribe`, авторизация и рост
         бюджетного счётчика отработали.
-      - **`proxy/workers/` задеплоен и живой:**
+      - **`proxy/workers/` задеплоен, живой, MOCK_MODE=false —
+        реальные вызовы к OpenAI работают.**
         `https://chatterfy-translator-proxy.demonivan09.workers.dev`
-        (MOCK_MODE=true, секреты EXTENSION_TOKEN/OPENAI_API_KEY уже
-        заданы через `wrangler secret put`, KV namespace
-        `BUDGET_KV` создан и подставлен в `wrangler.toml`, реальный
-        `workers.dev`-поддомен `demonivan09` зарегистрирован).
-        `GET /health` и авторизованный `/translate` проверены прямо на
-        проде — отвечают. Домен добавлен в `host_permissions`
-        расширения (`extension/manifest.json`). VPS-вариант (`proxy/`)
-        не деплоился — не нужно, раз Workers-вариант уже поднят.
+        (секреты EXTENSION_TOKEN/OPENAI_API_KEY заданы через
+        `wrangler secret put`, KV namespace `BUDGET_KV` создан,
+        `workers.dev`-поддомен `demonivan09` зарегистрирован). Домен
+        добавлен в `host_permissions` расширения
+        (`extension/manifest.json`). Реальный `/translate` прогнан на
+        проде — модель `gpt-4.1-mini`, перевод пришёл на диалекте и
+        латиницей (арабизи), как в примере из HAR (TZ п.0.1), не
+        литературной арабицей — промпт с системой письма работает как
+        задумано. Фактическая стоимость одного вызова — $0.0001,
+        списалась в KV-счётчик бюджета корректно (не оценка "до
+        вызова", а посчитано по реальному `usage` из ответа OpenAI,
+        см. `computeChatCostUsdFromUsage` в `pricing.js`).
+        `/transcribe` с реальным ключом НЕ прогонялся — нет настоящего
+        голосового файла под рукой, да и рано: этап 1 (ручная проверка
+        качества STT) всё ещё не пройден, синтетический шум ничего не
+        скажет о качестве распознавания диалекта.
+        VPS-вариант (`proxy/`) не деплоился и не тестировался с
+        реальным ключом (код обновлён параллельно, для консистентности,
+        но не задеплоен) — не нужно, раз Workers-вариант уже поднят и
+        рабочий.
 - [x] **Этап 3 (без реального /translate).** Feature 1 целиком —
       content script (`extension/`): выделение текста, плашка с 4
       UI-состояниями, контекст диалекта через `messages/v1/search`,
