@@ -8,6 +8,13 @@
     // прямой DOM-инспекцией (в этой сессии не было доступа к живой странице).
     chatContainerSelector: '[data-testid="chat-messages"], .chat-messages, .messages-list, main',
     chatIdFromUrlPattern: /\/chats?\/([a-zA-Z0-9-]+)/,
+    // Подтверждено HAR-логом: API возвращает 50 сообщений одной страницей
+    // независимо от этого числа (limit, похоже, не влияет — либо
+    // игнорируется, либо у эндпоинта фиксированный размер страницы).
+    // Пагинация курсорная (ответ содержит data.cursor), но нам это не
+    // нужно: для контекста диалекта хватает последних 5-10 входящих
+    // сообщений, а одна страница даёт кратно больше — гонять курсор
+    // ради этого не стали, сознательное решение, не недосмотр.
     dialectContextLimit: 30,
     dialectContextMessages: 10,
   };
@@ -88,9 +95,16 @@
   }
 
   function buildDialectContext(messages) {
+    // Подтверждено HAR-логом: messages/v1/search отдаёт сообщения от
+    // НОВЫХ к СТАРЫМ (первый элемент — самый свежий). slice(-N) тут был
+    // ошибкой — брал N САМЫХ СТАРЫХ входящих в выборке, а не самых
+    // свежих. Берём первые N (самые свежие) и разворачиваем в
+    // хронологический порядок — так промпту "вот последние сообщения
+    // собеседника, 1..N" естественнее читать как реальный ход беседы.
     return messages
       .filter((m) => m && m.sender_type === 'incoming' && typeof m.content === 'string' && m.content.trim())
-      .slice(-CONFIG.dialectContextMessages)
+      .slice(0, CONFIG.dialectContextMessages)
+      .reverse()
       .map((m) => m.content);
   }
 
