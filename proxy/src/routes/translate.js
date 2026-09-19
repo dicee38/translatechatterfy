@@ -12,7 +12,7 @@ router.post(
   enforceBudget((req) => estimateTranslateCostUsd(req.body || {})),
   async (req, res, next) => {
     try {
-      const { text, dialectContext, targetLang } = req.body || {};
+      const { text, dialectContext, targetLang, direction: rawDirection } = req.body || {};
 
       if (typeof text !== 'string' || !text.trim()) {
         return res.status(400).json({ error: 'bad_request', message: 'Поле text обязательно и должно быть непустой строкой.' });
@@ -20,8 +20,12 @@ router.post(
       if (dialectContext !== undefined && !Array.isArray(dialectContext)) {
         return res.status(400).json({ error: 'bad_request', message: 'Поле dialectContext должно быть массивом строк.' });
       }
+      // 'to_dialect' — перевод в диалект собеседника (написание ответа),
+      // 'to_operator_language' — обратное (чтение входящего). Любое
+      // другое/отсутствующее значение — безопасный дефолт 'to_dialect'.
+      const direction = rawDirection === 'to_operator_language' ? 'to_operator_language' : 'to_dialect';
 
-      const result = await openai.translate({ text, dialectContext: dialectContext || [], targetLang });
+      const result = await openai.translate({ text, dialectContext: dialectContext || [], targetLang, direction });
 
       // TZ п.3.4: в лог/хранилище уходит только стоимость, не текст.
       recordCost(result.costUsd);

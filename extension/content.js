@@ -53,7 +53,7 @@
     return null;
   }
 
-  async function fetchDialectContext(chatId) {
+  async function fetchChatMessages(chatId) {
     const res = await fetch(MESSAGES_SEARCH_URL, {
       method: 'POST',
       credentials: 'include', // сессия оператора в самом Chatterfy, не ключи моделей
@@ -69,18 +69,41 @@
     // TODO: подтвердить точную форму верхнего уровня ответа на реальном
     // трафике (TZ п.0.1 показывает схему одного сообщения, не обёртку
     // списка) — на всякий случай понимаем и голый массив, и {messages:[]}/{items:[]}.
-    const messages = Array.isArray(data) ? data : data.messages || data.items || [];
+    return Array.isArray(data) ? data : data.messages || data.items || [];
+  }
 
+  function buildDialectContext(messages) {
     return messages
       .filter((m) => m && m.sender_type === 'incoming' && typeof m.content === 'string' && m.content.trim())
       .slice(-CONFIG.dialectContextMessages)
       .map((m) => m.content);
   }
 
-  function sendTranslateRequest(text, dialectContext, targetLang) {
+  function normalizeForMatch(s) {
+    return (s || '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Живьём выяснилось (проверка на реальном Chatterfy): выделение входящего
+  // сообщения собеседника и "перевод на диалект собеседника" даёт перевод
+  // "с арабского на арабский" — текст и так уже на этом диалекте. Промпт в
+  // TZ п.4.2 однонаправленный (для написания ответа), а нужно ещё и читать
+  // входящие. Определяем направление по sender_type найденного сообщения:
+  // не нашли/это исходящее — как раньше (в диалект), нашли входящее — на
+  // русский. Сопоставление по тексту, а не по DOM-узлу — данные всё ещё
+  // строго из API (TZ, "Архитектура").
+  function findSenderTypeForSelection(messages, selectedText) {
+    const needle = normalizeForMatch(selectedText);
+    if (!needle) return null;
+    const match = messages.find(
+      (m) => m && typeof m.content === 'string' && normalizeForMatch(m.content).includes(needle)
+    );
+    return match ? match.sender_type : null;
+  }
+
+  function sendTranslateRequest(text, dialectContext, targetLang, direction) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: 'translate', payload: { text, dialectContext, targetLang } },
+        { type: 'translate', payload: { text, dialectContext, targetLang, direction } },
         (response) => resolve(response || { ok: false, kind: 'network_error' })
       );
     });
@@ -90,20 +113,27 @@
     window.CftTranslateBubble.showLoading();
 
     let dialectContext = [];
+    let direction = 'to_dialect';
     if (chatId) {
       try {
-        dialectContext = await fetchDialectContext(chatId);
+        const messages = await fetchChatMessages(chatId);
+        dialectContext = buildDialectContext(messages);
+        if (findSenderTypeForSelection(messages, text) === 'incoming') {
+          direction = 'to_operator_language';
+        }
       } catch (err) {
         // Контекст диалекта — это улучшение качества перевода, а не
-        // обязательное условие; при сбое просто переводим без него.
+        // обязательное условие; при сбое просто переводим без него
+        // (и без автоопределения направления — остаётся дефолт "в диалект").
         console.warn('[Chatterfy Translator] не удалось получить контекст диалекта:', err);
       }
     }
 
     // Ручной override диалекта из попапа (TZ п.5 — "на случай, если
-    // авто-контекст ошибся"), непустая строка перекрывает автоопределение.
-    const targetLang = settings.manualDialectOverride || undefined;
-    const response = await sendTranslateRequest(text, dialectContext, targetLang);
+    // авто-контекст ошибся") применим только к направлению "в диалект" —
+    // для чтения входящих целевой язык всегда русский, override тут не при чём.
+    const targetLang = direction === 'to_dialect' ? settings.manualDialectOverride || undefined : undefined;
+    const response = await sendTranslateRequest(text, dialectContext, targetLang, direction);
 
     if (response.ok) {
       translationCache.set(cacheKey, response.translation);

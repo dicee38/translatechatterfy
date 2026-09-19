@@ -18,7 +18,7 @@ async function getProxyConfig() {
   };
 }
 
-async function handleTranslate({ text, dialectContext, targetLang }) {
+async function handleTranslate({ text, dialectContext, targetLang, direction }) {
   const { proxyBaseUrl, extensionToken } = await getProxyConfig();
 
   let response;
@@ -29,7 +29,7 @@ async function handleTranslate({ text, dialectContext, targetLang }) {
         'Content-Type': 'application/json',
         'X-Extension-Token': extensionToken,
       },
-      body: JSON.stringify({ text, dialectContext: dialectContext || [], targetLang }),
+      body: JSON.stringify({ text, dialectContext: dialectContext || [], targetLang, direction }),
     });
   } catch (err) {
     return { ok: false, kind: 'network_error', message: 'Не удалось связаться с прокси.' };

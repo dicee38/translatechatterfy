@@ -44,13 +44,17 @@ async function handleTranslate(request, cfg, env) {
   if (dialectContext !== undefined && !Array.isArray(dialectContext)) {
     return json({ error: 'bad_request', message: 'Поле dialectContext должно быть массивом строк.' }, 400);
   }
+  // 'to_dialect' — перевод в диалект собеседника (написание ответа, как в
+  // TZ п.4.2), 'to_operator_language' — обратное (чтение входящего). Любое
+  // другое/отсутствующее значение — безопасный дефолт 'to_dialect'.
+  const direction = body.direction === 'to_operator_language' ? 'to_operator_language' : 'to_dialect';
 
   const estimatedCostUsd = estimateTranslateCostUsd({ text, dialectContext });
   if (await budgetStore.wouldExceedBudget(env.BUDGET_KV, cfg.dailyBudgetUsd, estimatedCostUsd)) {
     return budgetExceededResponse(await budgetStore.getBudgetStatus(env.BUDGET_KV, cfg.dailyBudgetUsd));
   }
 
-  const result = await openai.translate(cfg, { text, dialectContext: dialectContext || [], targetLang });
+  const result = await openai.translate(cfg, { text, dialectContext: dialectContext || [], targetLang, direction });
 
   // TZ п.3.4: в KV уходит только стоимость, не текст.
   await budgetStore.recordCost(env.BUDGET_KV, result.costUsd);

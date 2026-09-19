@@ -7,10 +7,29 @@ import {
 
 // Промпт — тот же, что в proxy/src/lib/openai.js (TZ п.4.2), держать в
 // синхроне вручную по той же причине, что и pricing.js (см. комментарий там).
-function buildTranslatePrompt({ text, dialectContext, targetLang }) {
+//
+// direction: 'to_dialect' (по умолчанию, TZ п.4.2 как задумано — оператор
+// пишет черновик, перевод идёт В диалект собеседника для отправки) или
+// 'to_operator_language' (обратное — прочитать входящее сообщение
+// собеседника на русском). Добавлено после живой проверки на реальном
+// Chatterfy: выделение входящего сообщения и перевод "в диалект
+// собеседника" давало перевод "с арабского на арабский" — текст и так уже
+// на этом диалекте. Направление определяет content.js по sender_type
+// найденного сообщения (см. findSenderTypeForSelection).
+function buildTranslatePrompt({ text, dialectContext, targetLang, direction }) {
   const contextBlock = (dialectContext || [])
     .map((line, i) => `${i + 1}. "${line}"`)
     .join('\n');
+
+  if (direction === 'to_operator_language') {
+    return `Вот сообщение от собеседника и контекст последних его сообщений (для лучшего понимания диалекта/сленга):
+${contextBlock || '(контекст пуст)'}
+
+Переведи следующее сообщение собеседника на литературный русский язык, сохраняя смысл и тон:
+"${text}"
+
+Ответь только переводом, без пояснений.`;
+  }
 
   return `Вот последние сообщения собеседника (используй тот же диалект, стиль И систему письма — если он пишет латиницей/арабизи, а не арабской графикой, отвечай тем же способом):
 ${contextBlock || '(контекст пуст)'}
@@ -21,14 +40,14 @@ ${contextBlock || '(контекст пуст)'}
 Ответь только переводом, без пояснений.`;
 }
 
-export async function translate(cfg, { text, dialectContext, targetLang }) {
+export async function translate(cfg, { text, dialectContext, targetLang, direction }) {
   const estimatedCostUsd = estimateTranslateCostUsd({ text, dialectContext });
 
   if (cfg.mockMode) {
     return { translation: `[MOCK перевод] ${text}`, costUsd: estimatedCostUsd };
   }
 
-  const prompt = buildTranslatePrompt({ text, dialectContext, targetLang });
+  const prompt = buildTranslatePrompt({ text, dialectContext, targetLang, direction });
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
