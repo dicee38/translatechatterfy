@@ -83,6 +83,22 @@ function extractVoiceMessages(messages, chatId) {
   return voices;
 }
 
+// Живьём выяснилось: OpenAI определяет формат аудио по РАСШИРЕНИЮ ИМЕНИ
+// ФАЙЛА в multipart, не по Content-Type — имя без расширения ('voice') даёт
+// 400 "Unsupported file format" даже для корректного .ogg/.mp3. Голосовые
+// Chatterfy — не всегда .ogg (docs/chatterfy-api-reference.md §8: бывает
+// .mp3), поэтому расширение берём из самого URL, а не хардкодим.
+function guessFileName(url) {
+  try {
+    const pathname = decodeURIComponent(new URL(url).pathname);
+    const base = pathname.split('/').pop();
+    if (base && /\.\w+$/.test(base)) return base;
+  } catch (_) {
+    // падать тут не из-за чего критичного — просто используем фолбэк ниже
+  }
+  return 'voice.ogg';
+}
+
 async function transcribeViaProxy(voiceUrl, proxyBaseUrl, extensionToken) {
   const audioRes = await fetch(voiceUrl);
   if (!audioRes.ok) throw new Error(`не удалось скачать файл: ${audioRes.status}`);
@@ -90,7 +106,7 @@ async function transcribeViaProxy(voiceUrl, proxyBaseUrl, extensionToken) {
   const contentType = audioRes.headers.get('content-type') || 'application/octet-stream';
 
   const form = new FormData();
-  form.append('file', new Blob([buffer], { type: contentType }), 'voice');
+  form.append('file', new Blob([buffer], { type: contentType }), guessFileName(voiceUrl));
 
   const res = await fetch(`${proxyBaseUrl}/transcribe`, {
     method: 'POST',

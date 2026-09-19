@@ -107,7 +107,13 @@ export async function transcribe(cfg, { fileBuffer, fileName, mimeType }) {
   const form = new FormData();
   form.append('file', new Blob([fileBuffer], { type: mimeType }), fileName);
   form.append('model', 'gpt-transcribe'); // имя из TZ (уже согласовано, см. этап 1 чек-листа)
-  form.append('response_format', 'verbose_json'); // единственный формат, отдающий duration для точного списания
+  // Живьём выяснилось: gpt-transcribe (реально резолвится в
+  // gpt-transcribe-api-ev3) НЕ поддерживает response_format: 'verbose_json'
+  // — 400 "not compatible with model...Use 'json' or 'text' instead."
+  // verbose_json был нужен только ради duration в ответе для точного
+  // списания бюджета; без него используем фолбэк — оценку по размеру файла
+  // (estimatedCostUsd, уже посчитана выше), которая для этого и существовала.
+  form.append('response_format', 'json');
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
