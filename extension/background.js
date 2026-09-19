@@ -52,9 +52,82 @@ async function handleTranslate({ text, dialectContext, targetLang, direction }) 
   return { ok: true, translation: data.translation };
 }
 
+// Живьём выяснилось (этап 1, docs/TZ.md §5.2): OpenAI определяет формат
+// аудио по РАСШИРЕНИЮ имени файла в multipart, не по Content-Type — имя
+// без расширения даёт 400 "Unsupported file format". Голосовые Chatterfy
+// не всегда .ogg (бывает и .mp3), поэтому берём расширение из самого URL.
+function guessFileName(url) {
+  try {
+    const pathname = decodeURIComponent(new URL(url).pathname);
+    const base = pathname.split('/').pop();
+    if (base && /\.\w+$/.test(base)) return base;
+  } catch (err) {
+    // не критично — просто используем фолбэк ниже
+  }
+  return 'voice.ogg';
+}
+
+// Feature 2 (TZ п.5.2): скачивание голосового — тоже здесь, а не в content
+// script. Bucket с голосовыми — сторонний домен (S3), нужен в
+// host_permissions manifest.json; скачивание из background обходит
+// зависимость от CORS-заголовков самого бакета (см. рассуждение в шапке
+// файла про причину, по которой прокси вообще дёргается отсюда).
+async function handleTranscribe({ url }) {
+  const { proxyBaseUrl, extensionToken } = await getProxyConfig();
+
+  let audioResponse;
+  try {
+    audioResponse = await fetch(url);
+  } catch (err) {
+    return { ok: false, kind: 'network_error', message: 'Не удалось скачать голосовое сообщение.' };
+  }
+  if (!audioResponse.ok) {
+    return { ok: false, kind: 'network_error', message: `Не удалось скачать голосовое (${audioResponse.status}).` };
+  }
+
+  const buffer = await audioResponse.arrayBuffer();
+  const contentType = audioResponse.headers.get('content-type') || 'application/octet-stream';
+
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: contentType }), guessFileName(url));
+
+  let response;
+  try {
+    response = await fetch(`${proxyBaseUrl}/transcribe`, {
+      method: 'POST',
+      headers: { 'X-Extension-Token': extensionToken },
+      body: form,
+    });
+  } catch (err) {
+    return { ok: false, kind: 'network_error', message: 'Не удалось связаться с прокси.' };
+  }
+
+  if (response.status === 429) {
+    const body = await response.json().catch(() => ({}));
+    return { ok: false, kind: 'budget_exceeded', message: body.message || 'Дневной лимит бюджета исчерпан.' };
+  }
+
+  if (!response.ok) {
+    return { ok: false, kind: 'network_error', message: `Прокси вернул ошибку ${response.status}.` };
+  }
+
+  const data = await response.json().catch(() => null);
+  if (!data || typeof data.transcript !== 'string') {
+    return { ok: false, kind: 'network_error', message: 'Прокси вернул неожиданный ответ.' };
+  }
+
+  return { ok: true, transcript: data.transcript, language: data.language };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message && message.type === 'translate') {
     handleTranslate(message.payload || {})
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, kind: 'network_error', message: String(err) }));
+    return true; // ответ асинхронный
+  }
+  if (message && message.type === 'transcribe') {
+    handleTranscribe(message.payload || {})
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, kind: 'network_error', message: String(err) }));
     return true; // ответ асинхронный

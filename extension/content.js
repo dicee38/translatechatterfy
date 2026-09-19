@@ -1,25 +1,9 @@
 // Feature 1 (TZ п.4): перевод по выделению. Данные диалекта — из
 // messages/v1/search (TZ п.0.1), не из DOM. DOM используется только для
 // зоны слушателя выделения и позиционирования плашки (TZ, "Архитектура").
+// Общая логика работы с Chatterfy API — в chatterfy-api.js (window.CftChatterfyApi).
 (function () {
-  const CONFIG = {
-    // TODO: проверить на реальной странице v2.chatterfy.ai и уточнить —
-    // это предположение по типичной структуре чата, не подтверждено
-    // прямой DOM-инспекцией (в этой сессии не было доступа к живой странице).
-    chatContainerSelector: '[data-testid="chat-messages"], .chat-messages, .messages-list, main',
-    chatIdFromUrlPattern: /\/chats?\/([a-zA-Z0-9-]+)/,
-    // Подтверждено HAR-логом: API возвращает 50 сообщений одной страницей
-    // независимо от этого числа (limit, похоже, не влияет — либо
-    // игнорируется, либо у эндпоинта фиксированный размер страницы).
-    // Пагинация курсорная (ответ содержит data.cursor), но нам это не
-    // нужно: для контекста диалекта хватает последних 5-10 входящих
-    // сообщений, а одна страница даёт кратно больше — гонять курсор
-    // ради этого не стали, сознательное решение, не недосмотр.
-    dialectContextLimit: 30,
-    dialectContextMessages: 10,
-  };
-
-  const MESSAGES_SEARCH_URL = 'https://migration-api.chatterfy.ai/api/messages/v1/search';
+  const DIALECT_CONTEXT_MESSAGES = 10;
 
   // TZ п.4.2: кэш в памяти вкладки, ключ hash(text + chatId). Для Map
   // обычная строка-ключ так же надёжна, как явный хэш — отдельная функция
@@ -47,93 +31,6 @@
     applyStoredSettings(patch);
     if (patch.feature1Enabled === false) window.CftTranslateBubble.hide();
   });
-
-  function getChatContainer() {
-    return document.querySelector(CONFIG.chatContainerSelector);
-  }
-
-  function getChatId() {
-    // Подтверждено на реальном Chatterfy: id чата лежит в query-параметре
-    // ?chat=..., не в пути (напр. /bots/<botId>/chats?chat=<chatId>) —
-    // до этой правки chatIdFromUrlPattern матчил только путь и всегда
-    // возвращал null для реальных ссылок, из-за чего контекст диалекта
-    // тихо оставался пустым без единой ошибки в консоли.
-    const fromQuery = new URLSearchParams(location.search).get('chat');
-    if (fromQuery) return fromQuery;
-    // Фолбэк на случай другого формата ссылки (не подтверждён вживую).
-    const urlMatch = location.pathname.match(CONFIG.chatIdFromUrlPattern);
-    if (urlMatch) return urlMatch[1];
-    const el = document.querySelector('[data-chat-id]');
-    if (el) return el.getAttribute('data-chat-id');
-    return null;
-  }
-
-  // Подтверждено docs/chatterfy-api-reference.md (сводный справочник по
-  // реальному трафику Chatterfy, включая п.1 «Авторизация»): API требует
-  // заголовок `authorization: <JWT>` БЕЗ префикса "Bearer", а не cookie —
-  // credentials: 'include' тут в принципе не при чём (и не сработал бы:
-  // сервер отдаёт Access-Control-Allow-Origin: "*", что несовместимо с
-  // credentialed-запросом по спеке CORS). Токен ищем в localStorage/
-  // sessionStorage по виду (JWT), точное имя ключа не зафиксировано.
-  const JWT_PATTERN = /[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
-
-  function findJwtInStorage(storage) {
-    for (let i = 0; i < storage.length; i++) {
-      const value = storage.getItem(storage.key(i));
-      if (typeof value !== 'string') continue;
-      const match = value.match(JWT_PATTERN);
-      if (match) return match[0];
-    }
-    return null;
-  }
-
-  function getAuthToken() {
-    try {
-      return findJwtInStorage(window.localStorage) || findJwtInStorage(window.sessionStorage) || null;
-    } catch (err) {
-      // Доступ к storage может быть запрещён политикой страницы — не фатально,
-      // просто не найдём токен и попробуем без него (получим 401 и явно узнаем).
-      return null;
-    }
-  }
-
-  async function fetchChatMessages(chatId) {
-    const token = getAuthToken();
-    const headers = { 'Content-Type': 'application/json' };
-    if (token) headers.authorization = token;
-
-    const res = await fetch(MESSAGES_SEARCH_URL, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ chat_id: chatId, limit: CONFIG.dialectContextLimit }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`messages/v1/search вернул ${res.status}${token ? '' : ' (токен авторизации не найден в localStorage/sessionStorage)'}`);
-    }
-
-    const data = await res.json();
-    // Подтверждено тем же HAR-логом — реальная форма ответа вложенная:
-    // {"data":{"items":[...]}}, не голый массив и не {messages:[]}/{items:[]}
-    // на верхнем уровне, как предполагалось изначально (TZ п.0.1 показывал
-    // только схему одного сообщения, не обёртку списка). Остальные варианты
-    // оставлены как фолбэк на случай другого эндпоинта/версии API.
-    return data?.data?.items || data?.items || data?.messages || (Array.isArray(data) ? data : []);
-  }
-
-  function buildDialectContext(messages) {
-    // Подтверждено HAR-логом: messages/v1/search отдаёт сообщения от
-    // НОВЫХ к СТАРЫМ (первый элемент — самый свежий). slice(-N) тут был
-    // ошибкой — брал N САМЫХ СТАРЫХ входящих в выборке, а не самых
-    // свежих. Берём первые N (самые свежие) и разворачиваем в
-    // хронологический порядок — так промпту "вот последние сообщения
-    // собеседника, 1..N" естественнее читать как реальный ход беседы.
-    return messages
-      .filter((m) => m && m.sender_type === 'incoming' && typeof m.content === 'string' && m.content.trim())
-      .slice(0, CONFIG.dialectContextMessages)
-      .reverse()
-      .map((m) => m.content);
-  }
 
   // Живьём выяснилось (проверка на реальном Chatterfy) — направление
   // перевода нельзя определять по sender_type выделенного сообщения:
@@ -171,7 +68,8 @@
     let dialectContext = [];
     if (chatId) {
       try {
-        dialectContext = buildDialectContext(await fetchChatMessages(chatId));
+        const messages = await window.CftChatterfyApi.fetchChatMessages(chatId);
+        dialectContext = window.CftChatterfyApi.buildDialectContext(messages, DIALECT_CONTEXT_MESSAGES);
       } catch (err) {
         // Контекст диалекта — это улучшение качества перевода, а не
         // обязательное условие; при сбое просто переводим без него.
@@ -196,7 +94,7 @@
   }
 
   function handleSelection(rect, text) {
-    const chatId = getChatId();
+    const chatId = window.CftChatterfyApi.getChatId();
     const cacheKey = `${chatId || 'no-chat-id'}::${text}`;
 
     if (translationCache.has(cacheKey)) {
@@ -213,7 +111,7 @@
   document.addEventListener('mouseup', (e) => {
     if (!settings.feature1Enabled) return;
 
-    const container = getChatContainer();
+    const container = window.CftChatterfyApi.getChatContainer();
     if (!container || !container.contains(e.target)) {
       return;
     }
