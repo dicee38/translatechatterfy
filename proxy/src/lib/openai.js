@@ -41,6 +41,15 @@ async function transcribe({ fileBuffer, fileName, mimeType }) {
   return { transcript: data.text ?? '', language: data.language, costUsd: actualCostUsd };
 }
 
+// Живая проверка показала: инструкция "ответь только переводом, без
+// пояснений", зашитая внутрь user-сообщения, не всегда соблюдается —
+// на неоднозначном/грязном тексте модель иногда отвечала целым
+// рассуждением ("похоже, это казахский язык... примерный смысл...")
+// вместо чистого перевода. Вынесено в отдельное system-сообщение —
+// модели заметно надёжнее следуют системным инструкциям, чем тем же
+// текстом внутри user-хода.
+const TRANSLATE_SYSTEM_PROMPT = 'Ты выполняешь только одну задачу — перевод текста. Отвечай СТРОГО только самим переводом: без пояснений, без анализа языка/диалекта, без вариантов, без вводных фраз вроде "Похоже, это..." или "Примерный смысл:", без кавычек вокруг перевода. Даже если текст короткий, неоднозначный или содержит опечатки — всё равно дай один наиболее вероятный перевод, никогда не описывай, что текст непонятен.';
+
 // TZ п.4.2 — модель дергается и для перевода (Feature 1), и в перспективе
 // для умного ответа (Feature 3, TZ п.6). Раньше это была Claude Haiku,
 // теперь — тоже OpenAI, чтобы держать один внешний вендор/один ключ.
@@ -48,11 +57,8 @@ async function transcribe({ fileBuffer, fileName, mimeType }) {
 // direction: 'to_dialect' (по умолчанию, TZ п.4.2 как задумано — оператор
 // пишет черновик, перевод идёт В диалект собеседника для отправки) или
 // 'to_operator_language' (обратное — прочитать входящее сообщение
-// собеседника на русском). Добавлено после живой проверки на реальном
-// Chatterfy: выделение входящего сообщения и перевод "в диалект
-// собеседника" давало перевод "с арабского на арабский" — текст и так уже
-// на этом диалекте. Направление определяет content.js по sender_type
-// найденного сообщения (см. findSenderTypeForSelection).
+// собеседника на русском). Направление определяет content.js по алфавиту
+// выделенного текста (см. detectDirection в extension/content.js).
 function buildTranslatePrompt({ text, dialectContext, targetLang, direction }) {
   const contextBlock = (dialectContext || [])
     .map((line, i) => `${i + 1}. "${line}"`)
@@ -99,7 +105,10 @@ async function translate({ text, dialectContext, targetLang, direction }) {
     },
     body: JSON.stringify({
       model: 'gpt-4.1-mini',
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: TRANSLATE_SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
     }),
   });
 
