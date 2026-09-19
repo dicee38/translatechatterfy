@@ -4,6 +4,7 @@ const { requireExtensionToken } = require('./middleware/auth');
 const { getBudgetStatus } = require('./lib/budget-store');
 const translateRoute = require('./routes/translate');
 const transcribeRoute = require('./routes/transcribe');
+const suggestReplyRoute = require('./routes/suggest-reply');
 
 assertStartupInvariants();
 
@@ -19,6 +20,7 @@ app.use(requireExtensionToken);
 
 app.use(translateRoute);
 app.use(transcribeRoute);
+app.use(suggestReplyRoute);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {

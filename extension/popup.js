@@ -3,6 +3,7 @@
 (function () {
   const feature1Checkbox = document.getElementById('feature1Enabled');
   const feature2Checkbox = document.getElementById('feature2Enabled');
+  const feature3Checkbox = document.getElementById('feature3Enabled');
   const dialectInput = document.getElementById('manualDialectOverride');
   const clearDialectBtn = document.getElementById('clearDialect');
   const proxyUrlInput = document.getElementById('proxyBaseUrl');
@@ -17,6 +18,7 @@
     const stored = await chrome.storage.local.get([
       'feature1Enabled',
       'feature2Enabled',
+      'feature3Enabled',
       'manualDialectOverride',
       'proxyBaseUrl',
       'extensionToken',
@@ -24,6 +26,7 @@
 
     feature1Checkbox.checked = stored.feature1Enabled !== false; // дефолт: включено
     feature2Checkbox.checked = stored.feature2Enabled !== false; // дефолт: включено
+    feature3Checkbox.checked = stored.feature3Enabled !== false; // дефолт: включено
     dialectInput.value = stored.manualDialectOverride || '';
     proxyUrlInput.value = stored.proxyBaseUrl || CFT_DEFAULT_PROXY_BASE_URL;
     tokenInput.value = stored.extensionToken || CFT_DEFAULT_EXTENSION_TOKEN;
@@ -35,6 +38,10 @@
 
   feature2Checkbox.addEventListener('change', () => {
     chrome.storage.local.set({ feature2Enabled: feature2Checkbox.checked });
+  });
+
+  feature3Checkbox.addEventListener('change', () => {
+    chrome.storage.local.set({ feature3Enabled: feature3Checkbox.checked });
   });
 
   let dialectSaveTimer = null;
