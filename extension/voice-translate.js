@@ -276,7 +276,6 @@
   // сборки. Сообщения без meta.duration пропускаются — сопоставлять
   // только по времени слишком ненадёжно.
 
-  const attachedUrls = new Set();
   const DURATION_TEXT_PATTERN = /^\d{1,2}:\d{2}\/(\d{1,2}:\d{2})$/;
 
   function formatDurationMMSS(totalSeconds) {
@@ -326,9 +325,22 @@
     const panel = document.createElement('div');
     panel.className = 'cft-voice-panel';
     bubbleEl.appendChild(panel);
+    bubbleEl.dataset.cftVoiceUrl = voice.url;
     resetToIdle(panel, voice);
   }
 
+  // Живьём выяснилось: список сообщений у Chatterfy виртуализирован — при
+  // скролле и особенно при переключении чата React переиспользует одни и
+  // те же DOM-узлы под другие сообщения. Первая версия помечала узел
+  // "обработан" постоянным атрибутом и больше никогда не перепроверяла —
+  // из-за этого кнопка то пропадала на некоторых сообщениях (узел
+  // переиспользован под них, но помечен как чужой), то не появлялась
+  // вообще при смене чата без перезагрузки страницы (все узлы нового чата
+  // — вторично использованные из старого, все с "чужой" меткой).
+  // Лечится тем, что каждый скан сверяет: то ли сейчас голосовое навешано
+  // на узел, что и должно быть, — если нет (узел пуст или там чужой url),
+  // перевешивает; если узел для голосового больше не годится (переиспользован
+  // под что-то другое) — снимает панель.
   async function scanForVoices() {
     if (!settings.feature2Enabled) return;
 
@@ -357,52 +369,63 @@
     // (уже на русском) — "перевести на русский" для них бессмысленно, тот
     // же класс проблемы, что был с Feature 1 до фикса направления. Пока
     // ограничиваемся входящими; при необходимости расширить — тривиально.
-    const candidates = [];
+    // Ключ "время|длительность" — коллизия возможна (два входящих голосовых
+    // одной длины в одну минуту), известное и принятое ограничение.
+    const candidatesByKey = new Map();
     for (const m of messages) {
       if (m.sender_type !== 'incoming') continue;
       for (const f of m.files || []) {
         if (f.type !== 'voice' || !f.url) continue;
-        if (attachedUrls.has(f.url)) continue;
         const duration = f.meta && typeof f.meta.duration === 'number' ? f.meta.duration : null;
         const timeText = formatTimeHHMM(m.created_at);
         // Без длительности сопоставление по одному времени слишком
         // ненадёжно (коллизии) — такие голосовые пропускаем.
         if (duration === null || !timeText) continue;
-        candidates.push({
+        candidatesByKey.set(`${timeText}|${formatDurationMMSS(duration)}`, {
           chatId,
           messageId: m.id,
           url: f.url,
           costLabel: estimateCostLabel(duration),
-          durationText: formatDurationMMSS(duration),
-          timeText,
         });
       }
     }
 
-    if (candidates.length === 0) return;
+    const matchedBubbles = new Set();
 
-    const widgets = findVoiceWidgets();
-    for (const widget of widgets) {
+    for (const widget of findVoiceWidgets()) {
       const match = DURATION_TEXT_PATTERN.exec(widget.textContent.trim());
       if (!match) continue;
-      const widgetDurationText = match[1];
 
       const bubble = findBubbleContainer(widget);
-      if (!bubble || bubble.dataset.cftVoiceAttached) continue;
+      if (!bubble) continue;
       const timestampEl = bubble.querySelector('[data-message-timestamp]');
       const widgetTimeText = timestampEl ? timestampEl.textContent.trim() : null;
       if (!widgetTimeText) continue;
 
-      const candidateIndex = candidates.findIndex(
-        (c) => c.durationText === widgetDurationText && c.timeText === widgetTimeText
-      );
-      if (candidateIndex === -1) continue;
+      const candidate = candidatesByKey.get(`${widgetTimeText}|${match[1]}`);
+      if (!candidate) continue; // не входящее голосовое либо нет данных — не наш случай
 
-      const [voice] = candidates.splice(candidateIndex, 1);
-      attachedUrls.add(voice.url);
-      bubble.dataset.cftVoiceAttached = 'true';
-      attachPanel(bubble, voice);
+      matchedBubbles.add(bubble);
+
+      if (bubble.dataset.cftVoiceUrl === candidate.url) continue; // уже верно навешано, не трогаем (не сбрасываем открытую панель)
+
+      // Узел либо новый, либо переиспользован под другое сообщение —
+      // убираем чужую панель, если была, и вешаем актуальную.
+      const stalePanel = bubble.querySelector(':scope > .cft-voice-panel');
+      if (stalePanel) stalePanel.remove();
+      attachPanel(bubble, candidate);
     }
+
+    // Узлы, которые раньше были голосовыми с нашей панелью, но в этом
+    // скане больше не сматчились ни с одним голосовым (переиспользованы
+    // под текстовое сообщение и т.п.) — снимаем осиротевшую панель.
+    document.querySelectorAll('.cft-voice-panel').forEach((panel) => {
+      const bubble = panel.parentElement;
+      if (bubble && !matchedBubbles.has(bubble)) {
+        panel.remove();
+        delete bubble.dataset.cftVoiceUrl;
+      }
+    });
   }
 
   setInterval(scanForVoices, RESCAN_INTERVAL_MS);
