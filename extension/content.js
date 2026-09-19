@@ -46,6 +46,14 @@
   }
 
   function getChatId() {
+    // Подтверждено на реальном Chatterfy: id чата лежит в query-параметре
+    // ?chat=..., не в пути (напр. /bots/<botId>/chats?chat=<chatId>) —
+    // до этой правки chatIdFromUrlPattern матчил только путь и всегда
+    // возвращал null для реальных ссылок, из-за чего контекст диалекта
+    // тихо оставался пустым без единой ошибки в консоли.
+    const fromQuery = new URLSearchParams(location.search).get('chat');
+    if (fromQuery) return fromQuery;
+    // Фолбэк на случай другого формата ссылки (не подтверждён вживую).
     const urlMatch = location.pathname.match(CONFIG.chatIdFromUrlPattern);
     if (urlMatch) return urlMatch[1];
     const el = document.querySelector('[data-chat-id]');
