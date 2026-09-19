@@ -141,21 +141,29 @@ export async function transcribe(cfg, { fileBuffer, fileName, mimeType }) {
 // ответ по границам "---" или похожему самодельному разделителю.
 const SUGGEST_REPLY_SYSTEM_PROMPT = 'Ты помогаешь оператору поддержки написать следующий ответ собеседнику на его диалекте — по контексту переписки. Отвечай СТРОГО валидным JSON вида {"replyInDialect": "...", "backTranslationRu": "..."} — никакого текста до или после JSON, никакой markdown-обёртки (без ```json).';
 
-function buildSuggestReplyPrompt(conversationContext) {
+// operatorPersona — необязательный текст из попапа (кто оператор, чем
+// занимается, какой у него тон в переписке) — не хардкодим в промпт,
+// оператор задаёт и меняет сам через настройки, чтобы не редеплоить
+// прокси при смене легенды/тона.
+function buildSuggestReplyPrompt(conversationContext, operatorPersona) {
   const lines = (conversationContext || [])
     .map((m, i) => `${i + 1}. ${m.role === 'operator' ? 'Оператор' : 'Собеседник'}: "${m.text}"`)
     .join('\n');
 
-  return `Вот последние сообщения диалога в хронологическом порядке:
+  const personaBlock = operatorPersona && operatorPersona.trim()
+    ? `Контекст об операторе (учитывай при формулировке ответа — это его роль, легенда и манера общения):\n${operatorPersona.trim()}\n\n`
+    : '';
+
+  return `${personaBlock}Вот последние сообщения диалога в хронологическом порядке:
 ${lines || '(диалог пуст)'}
 
-Предложи следующий ответ оператора собеседнику: на том же диалекте и в той же системе письма, что использует собеседник (латиница/арабица/иное — как он сам пишет), уместный по смыслу и тону, продолжающий разговор. Также дай обратный перевод этого ответа на литературный русский, чтобы оператор понимал, что реально отправляет.
+Предложи следующий ответ оператора собеседнику: на том же диалекте и в той же системе письма, что использует собеседник (латиница/арабица/иное — как он сам пишет), уместный по смыслу и тону, продолжающий разговор, с учётом контекста об операторе выше (если он есть). Также дай обратный перевод этого ответа на литературный русский, чтобы оператор понимал, что реально отправляет.
 
 Ответь JSON: {"replyInDialect": "<ответ на диалекте>", "backTranslationRu": "<перевод на русский>"}`;
 }
 
-export async function suggestReply(cfg, { conversationContext }) {
-  const estimatedCostUsd = estimateSuggestReplyCostUsd({ conversationContext });
+export async function suggestReply(cfg, { conversationContext, operatorPersona }) {
+  const estimatedCostUsd = estimateSuggestReplyCostUsd({ conversationContext, operatorPersona });
 
   if (cfg.mockMode) {
     return {
@@ -165,7 +173,7 @@ export async function suggestReply(cfg, { conversationContext }) {
     };
   }
 
-  const prompt = buildSuggestReplyPrompt(conversationContext);
+  const prompt = buildSuggestReplyPrompt(conversationContext, operatorPersona);
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',

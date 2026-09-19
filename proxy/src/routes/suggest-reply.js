@@ -20,7 +20,7 @@ router.post(
   enforceBudget((req) => estimateSuggestReplyCostUsd(req.body || {})),
   async (req, res, next) => {
     try {
-      const { conversationContext } = req.body || {};
+      const { conversationContext, operatorPersona } = req.body || {};
 
       if (!isValidConversationContext(conversationContext)) {
         return res.status(400).json({
@@ -28,8 +28,11 @@ router.post(
           message: 'Поле conversationContext обязательно: непустой массив { role: "operator"|"interlocutor", text: string }.',
         });
       }
+      if (operatorPersona !== undefined && typeof operatorPersona !== 'string') {
+        return res.status(400).json({ error: 'bad_request', message: 'Поле operatorPersona, если задано, должно быть строкой.' });
+      }
 
-      const result = await openai.suggestReply({ conversationContext });
+      const result = await openai.suggestReply({ conversationContext, operatorPersona });
 
       // TZ п.3.4: в лог/хранилище уходит только стоимость, не текст диалога.
       recordCost(result.costUsd);

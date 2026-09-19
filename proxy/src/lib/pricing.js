@@ -38,11 +38,11 @@ function estimateTranslateCostUsd({ text, dialectContext }) {
 // (10-15 сообщений с обеих сторон, не 5-10 только входящих), и системный
 // промпт длиннее (просим строгий JSON с двумя полями) — отдельная оценка,
 // не переиспользуем estimateTranslateCostUsd как есть.
-function estimateSuggestReplyCostUsd({ conversationContext }) {
+function estimateSuggestReplyCostUsd({ conversationContext, operatorPersona }) {
   const contextText = Array.isArray(conversationContext)
     ? conversationContext.map((m) => (m && m.text) || '').join(' ')
     : '';
-  const inputTokens = estimateTokensFromText(contextText) + 300;
+  const inputTokens = estimateTokensFromText(contextText) + estimateTokensFromText(operatorPersona) + 300;
   const outputTokens = 300; // ответ + обратный перевод, обычно короткие
   const inputCost = (inputTokens / 1_000_000) * OPENAI_CHAT_PRICE_PER_1M_INPUT_TOKENS_USD;
   const outputCost = (outputTokens / 1_000_000) * OPENAI_CHAT_PRICE_PER_1M_OUTPUT_TOKENS_USD;

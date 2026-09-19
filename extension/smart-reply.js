@@ -11,23 +11,27 @@
   const RESCAN_INTERVAL_MS = 1500;
   const CONVERSATION_CONTEXT_MESSAGES = 12;
 
-  const settings = { feature3Enabled: true };
+  const settings = { feature3Enabled: true, operatorPersona: '' };
 
   function applyStoredSettings(stored) {
     if (stored.feature3Enabled !== undefined) settings.feature3Enabled = stored.feature3Enabled !== false;
+    if (stored.operatorPersona !== undefined) settings.operatorPersona = stored.operatorPersona || '';
   }
 
-  chrome.storage.local.get(['feature3Enabled'], applyStoredSettings);
+  chrome.storage.local.get(['feature3Enabled', 'operatorPersona'], applyStoredSettings);
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes.feature3Enabled) applyStoredSettings({ feature3Enabled: changes.feature3Enabled.newValue });
+    const patch = {};
+    if (changes.feature3Enabled) patch.feature3Enabled = changes.feature3Enabled.newValue;
+    if (changes.operatorPersona) patch.operatorPersona = changes.operatorPersona.newValue;
+    applyStoredSettings(patch);
   });
 
   function suggestReplyRequest(conversationContext) {
     return new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: 'suggestReply', payload: { conversationContext } },
+        { type: 'suggestReply', payload: { conversationContext, operatorPersona: settings.operatorPersona || undefined } },
         (response) => resolve(response || { ok: false, kind: 'network_error' })
       );
     });

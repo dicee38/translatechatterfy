@@ -112,7 +112,7 @@ async function handleSuggestReply(request, cfg, env) {
     return json({ error: 'bad_request', message: 'Тело запроса должно быть JSON.' }, 400);
   }
 
-  const { conversationContext } = body || {};
+  const { conversationContext, operatorPersona } = body || {};
   if (!isValidConversationContext(conversationContext)) {
     return json(
       {
@@ -122,13 +122,16 @@ async function handleSuggestReply(request, cfg, env) {
       400
     );
   }
+  if (operatorPersona !== undefined && typeof operatorPersona !== 'string') {
+    return json({ error: 'bad_request', message: 'Поле operatorPersona, если задано, должно быть строкой.' }, 400);
+  }
 
-  const estimatedCostUsd = estimateSuggestReplyCostUsd({ conversationContext });
+  const estimatedCostUsd = estimateSuggestReplyCostUsd({ conversationContext, operatorPersona });
   if (await budgetStore.wouldExceedBudget(env.BUDGET_KV, cfg.dailyBudgetUsd, estimatedCostUsd)) {
     return budgetExceededResponse(await budgetStore.getBudgetStatus(env.BUDGET_KV, cfg.dailyBudgetUsd));
   }
 
-  const result = await openai.suggestReply(cfg, { conversationContext });
+  const result = await openai.suggestReply(cfg, { conversationContext, operatorPersona });
 
   // TZ п.3.4: в KV уходит только стоимость, не текст диалога.
   await budgetStore.recordCost(env.BUDGET_KV, result.costUsd);

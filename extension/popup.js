@@ -1,11 +1,18 @@
 // Этап 5 (полировка, docs/TZ.md раздел 9 п.5): вкл/выкл Feature 1,
 // ручной override диалекта, настройка прокси, индикатор дневного бюджета.
+// operatorPersona (Feature 3) — тоже тут, тот же принцип: не хардкодить
+// в прокси, оператор задаёт/меняет сам без редеплоя.
 (function () {
+  // Только как стартовый черновик при первом открытии попапа (пока
+  // operatorPersona ни разу не сохраняли) — дальше оператор правит сам.
+  const DEFAULT_OPERATOR_PERSONA = 'Я — трейдер с многолетним опытом, торгую на платформе Pocket Option и обучаю учеников. Провожу сессии в закрытом ВИП-канале, где ученики видят мои сделки и торгуют по моим сигналам. Некоторые ученики выбирают копитрейдинг — доверяют мне управление своим балансом на платформе, я торгую за них. Общаюсь с учениками как наставник: уверенно, по-дружески, поддерживаю мотивацию, объясняю простыми словами, отвечаю на вопросы про сделки, депозиты, ВИП-канал и копитрейдинг.';
+
   const feature1Checkbox = document.getElementById('feature1Enabled');
   const feature2Checkbox = document.getElementById('feature2Enabled');
   const feature3Checkbox = document.getElementById('feature3Enabled');
   const dialectInput = document.getElementById('manualDialectOverride');
   const clearDialectBtn = document.getElementById('clearDialect');
+  const personaInput = document.getElementById('operatorPersona');
   const proxyUrlInput = document.getElementById('proxyBaseUrl');
   const tokenInput = document.getElementById('extensionToken');
   const saveProxyBtn = document.getElementById('saveProxyConfig');
@@ -20,6 +27,7 @@
       'feature2Enabled',
       'feature3Enabled',
       'manualDialectOverride',
+      'operatorPersona',
       'proxyBaseUrl',
       'extensionToken',
     ]);
@@ -28,6 +36,8 @@
     feature2Checkbox.checked = stored.feature2Enabled !== false; // дефолт: включено
     feature3Checkbox.checked = stored.feature3Enabled !== false; // дефолт: включено
     dialectInput.value = stored.manualDialectOverride || '';
+    // undefined (ни разу не сохраняли) -> черновик; '' (осознанно очистили) -> пусто.
+    personaInput.value = stored.operatorPersona !== undefined ? stored.operatorPersona : DEFAULT_OPERATOR_PERSONA;
     proxyUrlInput.value = stored.proxyBaseUrl || CFT_DEFAULT_PROXY_BASE_URL;
     tokenInput.value = stored.extensionToken || CFT_DEFAULT_EXTENSION_TOKEN;
   }
@@ -55,6 +65,14 @@
   clearDialectBtn.addEventListener('click', () => {
     dialectInput.value = '';
     chrome.storage.local.set({ manualDialectOverride: '' });
+  });
+
+  let personaSaveTimer = null;
+  personaInput.addEventListener('input', () => {
+    clearTimeout(personaSaveTimer);
+    personaSaveTimer = setTimeout(() => {
+      chrome.storage.local.set({ operatorPersona: personaInput.value.trim() });
+    }, 300);
   });
 
   saveProxyBtn.addEventListener('click', async () => {

@@ -121,7 +121,7 @@ async function handleTranscribe({ url }) {
 
 // Feature 3 (TZ п.6, "перспектива" — сделана после того, как Feature 1 и 2
 // обкатаны в реальном использовании).
-async function handleSuggestReply({ conversationContext }) {
+async function handleSuggestReply({ conversationContext, operatorPersona }) {
   const { proxyBaseUrl, extensionToken } = await getProxyConfig();
 
   let response;
@@ -132,7 +132,7 @@ async function handleSuggestReply({ conversationContext }) {
         'Content-Type': 'application/json',
         'X-Extension-Token': extensionToken,
       },
-      body: JSON.stringify({ conversationContext }),
+      body: JSON.stringify({ conversationContext, operatorPersona }),
     });
   } catch (err) {
     return { ok: false, kind: 'network_error', message: 'Не удалось связаться с прокси.' };
