@@ -22,8 +22,8 @@
   "content_scripts": [
     {
       "matches": ["https://v2.chatterfy.ai/*"],
-      "js": ["chatterfy-api.js", "translate-bubble.js", "content.js", "voice-translate.js"],
-      "css": ["bubble.css", "voice-panel.css"],
+      "js": ["chatterfy-api.js", "translate-bubble.js", "content.js", "voice-translate.js", "compose-translate.js"],
+      "css": ["bubble.css", "voice-panel.css", "compose-button.css"],
       "run_at": "document_idle"
     }
   ]
