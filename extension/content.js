@@ -68,21 +68,48 @@
     return null;
   }
 
+  // Подтверждено docs/chatterfy-api-reference.md (сводный справочник по
+  // реальному трафику Chatterfy, включая п.1 «Авторизация»): API требует
+  // заголовок `authorization: <JWT>` БЕЗ префикса "Bearer", а не cookie —
+  // credentials: 'include' тут в принципе не при чём (и не сработал бы:
+  // сервер отдаёт Access-Control-Allow-Origin: "*", что несовместимо с
+  // credentialed-запросом по спеке CORS). Токен ищем в localStorage/
+  // sessionStorage по виду (JWT), точное имя ключа не зафиксировано.
+  const JWT_PATTERN = /[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/;
+
+  function findJwtInStorage(storage) {
+    for (let i = 0; i < storage.length; i++) {
+      const value = storage.getItem(storage.key(i));
+      if (typeof value !== 'string') continue;
+      const match = value.match(JWT_PATTERN);
+      if (match) return match[0];
+    }
+    return null;
+  }
+
+  function getAuthToken() {
+    try {
+      return findJwtInStorage(window.localStorage) || findJwtInStorage(window.sessionStorage) || null;
+    } catch (err) {
+      // Доступ к storage может быть запрещён политикой страницы — не фатально,
+      // просто не найдём токен и попробуем без него (получим 401 и явно узнаем).
+      return null;
+    }
+  }
+
   async function fetchChatMessages(chatId) {
-    // Подтверждено HAR-логом реального запроса от самого Chatterfy:
-    // эндпоинт открытый (CORS Access-Control-Allow-Origin: *), никакого
-    // заголовка авторизации/токена/cookie не шлётся вообще. credentials:
-    // 'include' был лишним и НЕ безобидным — с Origin: * браузер обязан
-    // блокировать credentialed-запрос (это и вызывало net::ERR_FAILED,
-    // из-за чего контекст диалекта всегда оставался пустым).
+    const token = getAuthToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers.authorization = token;
+
     const res = await fetch(MESSAGES_SEARCH_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ chat_id: chatId, limit: CONFIG.dialectContextLimit }),
     });
 
     if (!res.ok) {
-      throw new Error(`messages/v1/search вернул ${res.status}`);
+      throw new Error(`messages/v1/search вернул ${res.status}${token ? '' : ' (токен авторизации не найден в localStorage/sessionStorage)'}`);
     }
 
     const data = await res.json();
