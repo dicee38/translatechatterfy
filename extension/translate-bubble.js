@@ -42,34 +42,30 @@
     removeExisting();
   }
 
-  // Начальное состояние: просто кнопка "Перевести" (TZ 4.1 п.2-3 — плашка
+  // Начальное состояние: круглая кнопка с глобусом (TZ 4.1 п.2-3 — плашка
   // появляется сразу при выделении, а "Перевожу..." — только после клика).
+  // По отзыву оператора — тот же визуальный язык, что и у кнопки в поле
+  // ввода (compose-translate.js): минималистичный кружок с эмодзи вместо
+  // прямоугольной таблетки с текстом. Отдельный крестик не нужен — клик
+  // вне плашки уже закрывает её (outsideClickHandler).
   function showIdle(rect, onTranslateClick) {
     create(rect);
     el.innerHTML = '';
-    const row = document.createElement('div');
-    row.className = 'cft-bubble__row';
+    el.classList.add('cft-bubble--idle');
 
     const btn = document.createElement('button');
-    btn.className = 'cft-bubble__btn';
+    btn.className = 'cft-bubble__trigger';
     btn.type = 'button';
-    btn.textContent = 'Перевести';
+    btn.textContent = '🌐';
+    btn.title = 'Перевести';
     btn.addEventListener('click', onTranslateClick);
 
-    const close = document.createElement('button');
-    close.className = 'cft-bubble__btn cft-bubble__btn--ghost';
-    close.type = 'button';
-    close.textContent = '✕';
-    close.addEventListener('click', hide);
-
-    row.appendChild(btn);
-    row.appendChild(close);
-    el.appendChild(row);
+    el.appendChild(btn);
   }
 
   function showLoading() {
     if (!el) return;
-    el.classList.remove('cft-bubble--error', 'cft-bubble--budget');
+    el.classList.remove('cft-bubble--idle', 'cft-bubble--error', 'cft-bubble--budget');
     el.innerHTML = '';
     const row = document.createElement('div');
     row.className = 'cft-bubble__row';
@@ -85,7 +81,7 @@
 
   function showSuccess(translation) {
     if (!el) return;
-    el.classList.remove('cft-bubble--error', 'cft-bubble--budget');
+    el.classList.remove('cft-bubble--idle', 'cft-bubble--error', 'cft-bubble--budget');
     el.innerHTML = '';
 
     const row = document.createElement('div');
@@ -149,7 +145,7 @@
   function showNetworkError(onRetry) {
     if (!el) return;
     el.classList.add('cft-bubble--error');
-    el.classList.remove('cft-bubble--budget');
+    el.classList.remove('cft-bubble--idle', 'cft-bubble--budget');
     el.innerHTML = '';
 
     const text = document.createElement('div');
@@ -181,7 +177,7 @@
   function showBudgetExceeded(message) {
     if (!el) return;
     el.classList.add('cft-bubble--budget');
-    el.classList.remove('cft-bubble--error');
+    el.classList.remove('cft-bubble--idle', 'cft-bubble--error');
     el.innerHTML = '';
 
     const text = document.createElement('div');

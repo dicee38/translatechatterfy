@@ -12,6 +12,41 @@
   line-height: 1.4;
 }
 
+/* Состояние "просто выделили, ещё не нажали" — без панельного оформления
+   (фон/паддинг/тень основного .cft-bubble), только круглая кнопка. */
+.cft-bubble--idle {
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.cft-bubble__trigger {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #1f2430;
+  color: #f0f2f6;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: background 0.15s, transform 0.1s;
+}
+
+.cft-bubble__trigger:hover {
+  background: #3b82f6;
+  transform: scale(1.06);
+}
+
+.cft-bubble__trigger:active {
+  transform: scale(0.95);
+}
+
 .cft-bubble__row {
   display: flex;
   align-items: center;
