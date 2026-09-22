@@ -5,10 +5,6 @@
 // сопоставление по точному URL файла, а не по угаданным CSS-классам,
 // поэтому не хрупкое к вёрстке конкретной версии Chatterfy.
 (function () {
-  // Держать в синхроне с TRANSCRIBE_PRICE_PER_MINUTE_USD в
-  // proxy/*/lib/pricing.js (там же обоснование цифры — калибровка по
-  // реальному расходу на этапе 1, не цена из документации OpenAI).
-  const TRANSCRIBE_PRICE_PER_MINUTE_USD = 0.05;
   const RESCAN_INTERVAL_MS = 2000;
   const DIALECT_CONTEXT_MESSAGES = 10;
 
@@ -63,23 +59,17 @@
 
   // --- UI ---
 
-  function estimateCostLabel(durationSec) {
-    if (typeof durationSec !== 'number') return '';
-    const usd = (durationSec / 60) * TRANSCRIBE_PRICE_PER_MINUTE_USD;
-    return ` (~${Math.round(durationSec)}с, ~$${usd.toFixed(3)})`;
-  }
-
   function clearPanel(panel) {
     panel.innerHTML = '';
     panel.classList.remove('cft-voice-panel--open', 'cft-voice-panel--warn', 'cft-voice-panel--error');
   }
 
-  function renderIdle(panel, onClick, costLabel) {
+  function renderIdle(panel, onClick) {
     clearPanel(panel);
     const btn = document.createElement('button');
     btn.className = 'cft-voice-btn';
     btn.type = 'button';
-    btn.textContent = `Перевести${costLabel}`;
+    btn.textContent = 'Перевести';
     btn.addEventListener('click', onClick);
     panel.appendChild(btn);
   }
@@ -197,7 +187,7 @@
   }
 
   function resetToIdle(panel, voice) {
-    renderIdle(panel, () => runVoiceTranslation(voice, panel), voice.costLabel);
+    renderIdle(panel, () => runVoiceTranslation(voice, panel));
   }
 
   function handleFailure(response, panel, voice) {
@@ -385,7 +375,6 @@
           chatId,
           messageId: m.id,
           url: f.url,
-          costLabel: estimateCostLabel(duration),
         });
       }
     }
